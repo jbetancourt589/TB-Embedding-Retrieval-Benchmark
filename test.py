@@ -1,11 +1,25 @@
-import os
+from pathlib import Path
+
 import torch
 from Bio import SeqIO
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 MODEL_NAME = "InstaDeepAI/nucleotide-transformer-500m-human-ref"
 
-FASTA_DIR = r"Data/IR_Variable"
+PROJECT_DIR = Path(__file__).resolve().parent
+FASTA_DIR = PROJECT_DIR / "Data" / "IR_Variable"
+
+if not FASTA_DIR.exists():
+    raise FileNotFoundError(f"FASTA directory not found: {FASTA_DIR}")
+
+fasta_files = [
+    path
+    for path in sorted(FASTA_DIR.iterdir())
+    if path.name.endswith(".fasta")
+]
+
+if not fasta_files:
+    raise FileNotFoundError(f"No .fasta files found in: {FASTA_DIR}")
 
 print("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
@@ -18,12 +32,6 @@ model = model.to(device)
 model.eval()
 
 print("Device:", device)
-
-fasta_files = [
-    os.path.join(FASTA_DIR, f)
-    for f in os.listdir(FASTA_DIR)
-    if f.endswith(".fasta")
-]
 
 print("Number of FASTA files found:", len(fasta_files))
 

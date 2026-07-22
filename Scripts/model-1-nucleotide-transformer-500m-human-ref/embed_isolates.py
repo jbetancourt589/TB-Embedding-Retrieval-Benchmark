@@ -36,7 +36,28 @@ METADATA_OUT = os.path.join(OUTPUT_DIR, "isolate_metadata.csv")
 READABLE_EMBEDDINGS_OUT = os.path.join(OUTPUT_DIR, "readable_embeddings.csv")
 
 MAX_LENGTH = 1000
-NUM_FASTA_FILES = None  # Change this to 'None' to run all isolates.
+
+
+def get_num_fasta_files():
+    value = os.environ.get("TB_MAX_FASTA_FILES")
+
+    if value is None:
+        return None
+
+    value = value.strip()
+
+    if value.lower() in ("", "all", "none"):
+        return None
+
+    number = int(value)
+
+    if number <= 0:
+        raise ValueError("TB_MAX_FASTA_FILES must be a positive integer, 'all', or 'none'.")
+
+    return number
+
+
+NUM_FASTA_FILES = get_num_fasta_files()
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 

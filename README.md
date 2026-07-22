@@ -7,83 +7,34 @@ This project currently:
 
 - Loads tuberculosis isolate FASTA files from `Data/IR_Variable`
 - Loads antibiotic susceptibility labels from `Data/cryptic_targets_all.json`
-- Embeds each gene unit, defined as `BEFORE region + gene + AFTER region`, using `InstaDeepAI/nucleotide-transformer-500m-human-ref`
-- Averages gene-unit embeddings into one fixed-length embedding per isolate
-- Saves embeddings as a NumPy array and isolate metadata as a CSV file
-- Builds FAISS nearest-neighbor indexes over isolate embeddings
-- Compares each isolate's top 5 neighbors against antibiotic susceptibility labels
+- Generates isolate-level embeddings with multiple pretrained DNA language models
+- Compares embedding runtime and output size between models
+- Builds FAISS nearest-neighbor indexes from each model's isolate embeddings
+- Compares index build time, search time, index size, and top-5 label-match behavior across Flat, HNSW, and IVF indexes
 
 ## Pipeline
 
 ```text
-FASTA isolate files
+Data/IR_Variable + Data/cryptic_targets_all.json
       |
       v
-Extract gene units
-(BEFORE region + gene region + AFTER region)
+Generate embeddings for each model
       |
       v
-Nucleotide Transformer
-InstaDeepAI/nucleotide-transformer-500m-human-ref
+Save Outputs/<model>/isolate_embeddings.npy and metadata CSVs
       |
       v
-Gene-unit embeddings
+Build and search FAISS indexes for each model
+Flat, HNSW, IVF 1024/32, IVF 2048/64, IVF 4096/64
       |
       v
-Average all gene-unit embeddings for each isolate
+Collect benchmark summaries in Analysis/
       |
       v
-One fixed-length isolate embedding
-      |
-      v
-isolate_embeddings.npy
-      |
-      +----------------------------+
-      |                            |
-      v                            v
-isolate_metadata.csv         readable_embeddings.csv
-(isolate ID + labels)        (metadata + embedding columns)
-      |
-      v
-Build FAISS indexes
-flat, hnsw, ivf_1024_32, ivf_2048_64, ivf_4096_64
-      |
-      v
-Search each isolate against the index
-      |
-      v
-Remove the isolate itself and keep the top 5 nearest neighbors
-      |
-      v
-Compare query antibiotic labels with neighbor antibiotic labels
-AMI, BDQ, CFZ, DLM, EMB, ETH, INH, KAN, LEV, LZD, MXF, RIF, RFB
-      |
-      v
-Calculate per-antibiotic top-5 match scores
-      |
-      v
-Compare index behavior by match score, runtime, size, and neighbor overlap
+Generate comparison figures in Figures/
 ```
 
-The FAISS index does not use antibiotic labels to choose neighbors. It only uses embedding similarity. The antibiotic labels are used after nearest-neighbor search to evaluate whether nearby isolates share the same resistance or susceptibility phenotype.
-
-For each antibiotic, the match score is:
-
-```text
-number of valid query-neighbor pairs with the same antibiotic label
-/
-number of valid query-neighbor pairs for that antibiotic
-```
-
-With 6,150 isolates and `top_k = 5`, each antibiotic can have up to 30,750 query-neighbor comparisons. Missing labels are skipped, so the valid comparison count can be lower.
-
-The index-level match score used for comparison is the average of the per-antibiotic match scores:
-
-```text
-(AMI + BDQ + CFZ + DLM + EMB + ETH + INH + KAN + LEV + LZD + MXF + RIF + RFB) / 13
-```
-
-This index-level average is useful for comparing search methods, but the per-antibiotic scores are more biologically meaningful. Very high scores for rare-resistance drugs can happen because most isolates share the susceptible label, so those scores should be interpreted alongside resistance prevalence or a random same-label baseline.
+FAISS searches use only embedding similarity. Antibiotic labels are used after search to measure whether each isolate's top-5 neighbors share the same resistance or susceptibility phenotype.
 
 ## Repository Structure
 
@@ -122,7 +73,13 @@ Analysis/
 +-- embedding_summary.csv
 +-- faiss_summary.csv
 Figures/
-+-- *.png
++-- embedding_total_runtime.png
++-- embedding_average_runtime.png
++-- faiss_build_time.png
++-- faiss_search_time.png
++-- faiss_index_size.png
++-- faiss_match_rate.png
++-- umap_comparison_RIF.png
 ```
 
 ## Requirements
@@ -137,25 +94,28 @@ pip install -r requirements.txt
 
 For GPU acceleration, install the PyTorch build that matches your CUDA version from the official PyTorch installation instructions.
 
-## Embedding Model
+## Embedding Models
 
-This project currently uses the pretrained model:
+This project currently compares these pretrained models:
 
 ```text
 InstaDeepAI/nucleotide-transformer-500m-human-ref
+zhihan1996/DNA_bert_6
 ```
 
-No additional fine-tuning is currently performed. The model is used as a feature extractor to generate fixed-length genomic embeddings.
+No additional fine-tuning is performed. The models are used as feature extractors to generate fixed-length isolate embeddings.
 
 ## Data Expectations
 
-The embedding script expects:
+The embedding scripts expect:
 
 - FASTA files in `Data/IR_Variable`
 - FASTA filenames ending in `.fasta`
 - Isolate IDs derived from filenames by removing `_IR_Genes.fasta`
 - A target-label JSON file at `Data/cryptic_targets_all.json`
 - Matching isolate IDs between the FASTA filenames and the target-label JSON
+
+See `Data/README.md` for the expected local data layout. The real data files are ignored by Git.
 
 The FASTA parsing logic looks for groups of three records:
 
@@ -173,21 +133,36 @@ Each isolate contains many gene units. The embedding generated for each gene uni
 
 ## Usage
 
-Run a quick smoke test:
+Run the full pipeline:
+
+```bash
+python Scripts/run_full_pipeline.py
+```
+
+Run a smaller test pipeline:
+
+```bash
+python Scripts/run_full_pipeline.py --max-fasta-files 10
+```
+
+Reuse existing embeddings and only rebuild FAISS outputs, summaries, and figures:
+
+```bash
+python Scripts/run_full_pipeline.py --skip-embeddings
+```
+
+Run a quick model-loading smoke test:
 
 ```bash
 python test.py
 ```
 
-Generate Nucleotide Transformer isolate embeddings:
+You can also run each stage manually.
+
+Generate isolate embeddings:
 
 ```bash
 python Scripts/model-1-nucleotide-transformer-500m-human-ref/embed_isolates.py
-```
-
-Generate DNABERT-1 6-mer isolate embeddings:
-
-```bash
 python Scripts/model-2-dnabert-1-6mer/embed_isolates.py
 ```
 
@@ -206,13 +181,16 @@ python Scripts/analysis/collect_results.py
 python Scripts/analysis/generate_figures.py
 ```
 
-Each embedding script uses `NUM_FASTA_FILES` to control how many FASTA files are processed:
+When running individual embedding scripts, set `TB_MAX_FASTA_FILES` for a smaller test run. Leave it unset to process all isolates.
 
-```python
-NUM_FASTA_FILES = None
+PowerShell:
+
+```powershell
+$env:TB_MAX_FASTA_FILES = "10"
+python Scripts/model-1-nucleotide-transformer-500m-human-ref/embed_isolates.py
 ```
 
-Set this to an integer for a smaller test run, or leave it as `None` to process all isolates.
+Clear the limit with `Remove-Item Env:TB_MAX_FASTA_FILES`.
 
 ## Outputs
 
@@ -222,7 +200,7 @@ Set this to an integer for a smaller test run, or leave it as `None` to process 
 number_of_isolates x embedding_dimension
 ```
 
-Each row represents one isolate embedding, and each column corresponds to one embedding dimension produced by the pretrained nucleotide transformer.
+Each row represents one isolate embedding, and each column corresponds to one embedding dimension produced by the pretrained model.
 
 `isolate_metadata.csv` contains:
 
@@ -235,14 +213,14 @@ The CSV provides the mapping between each embedding and its corresponding isolat
 
 These two files are meant to stay aligned by row index. Row `i` in `isolate_embeddings.npy` corresponds to row `i` in `isolate_metadata.csv`.
 
-## Current Search Workflow
+## Benchmark Workflow
 
-The current FAISS workflow is:
+The benchmark workflow is:
 
-1. Generate an embedding for a new tuberculosis isolate.
-2. Search a FAISS index for the closest historical isolate embeddings.
-3. Retrieve antibiotic susceptibility labels for the nearest isolates.
-4. Compare nearest-neighbor labels as supporting evidence for resistance or susceptibility patterns.
+1. Generate embeddings for the same tuberculosis isolates with each model.
+2. Build and search the same FAISS index families for each model output.
+3. Compare embedding runtime, FAISS build time, FAISS search time, index size, and top-5 label-match rates.
+4. Use the generated CSV summaries and figures to compare model/index combinations.
 
 This should be treated as a research and decision-support workflow, not a standalone clinical diagnostic system.
 

@@ -16,13 +16,17 @@ env/
 .vscode/
 
 # Local data and generated outputs
-Data/
-Analysis/
-Figures/
-outputs/
-Outputs/
-Isolate Embedding Ouput/
-Isolate Embedding Output/
+/Data/*
+!/Data/README.md
+!/Data/IR_Variable/
+/Data/IR_Variable/*
+!/Data/IR_Variable/README.md
+/Analysis/
+/Figures/
+/outputs/
+/Outputs/
+/Isolate Embedding Ouput/
+/Isolate Embedding Output/
 *.npy
 *.csv
 *.index

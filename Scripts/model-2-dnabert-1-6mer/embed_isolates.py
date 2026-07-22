@@ -58,7 +58,27 @@ KMER_SIZE = 6
 # This fits within DNABERT's 512-token limit.
 CHUNK_SIZE = 500
 
-NUM_FASTA_FILES = None
+
+def get_num_fasta_files():
+    value = os.environ.get("TB_MAX_FASTA_FILES")
+
+    if value is None:
+        return None
+
+    value = value.strip()
+
+    if value.lower() in ("", "all", "none"):
+        return None
+
+    number = int(value)
+
+    if number <= 0:
+        raise ValueError("TB_MAX_FASTA_FILES must be a positive integer, 'all', or 'none'.")
+
+    return number
+
+
+NUM_FASTA_FILES = get_num_fasta_files()
 
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
