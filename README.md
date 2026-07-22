@@ -1,9 +1,6 @@
-# LLMTB
+# TB Isolate Embedding and Retrival Benchmark
 
-LLMTB is an early-stage tuberculosis genomics project for creating isolate-level embeddings from FASTA sequences. The long-term goal is to use these embeddings in a vector database so a new tuberculosis isolate can be compared against past isolates with similar genomes.
-
-Each isolate is paired with antibiotic susceptibility labels. Once the embeddings are indexed, nearest-neighbor search can support exploratory resistance analysis: for example, if the five closest historical isolates are resistant to a drug, the new isolate may be more likely to behave similarly. This repository currently generates isolate embeddings, builds FAISS indexes, retrieves nearest neighbors, and evaluates whether nearby embeddings share antibiotic resistance phenotypes.
-
+A benchmarking framework for genomic dense retrieval of Mycobacterium tuberculosis (MTB) isolates. This project compares multiple genomic embedding models and FAISS index types by generating isolate-level embeddings, retrieving nearest neighbors, and evaluating retrieval performance using antibiotic resistance labels
 ## Project Status
 
 This project currently:
