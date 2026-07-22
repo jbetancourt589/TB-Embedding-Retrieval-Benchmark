@@ -17,11 +17,18 @@ env/
 
 # Local data and generated outputs
 Data/
+Analysis/
+Figures/
 outputs/
 Outputs/
 Isolate Embedding Ouput/
+Isolate Embedding Output/
 *.npy
 *.csv
+*.index
+
+# Local run configurations
+.run/
 
 # OS files
 .DS_Store

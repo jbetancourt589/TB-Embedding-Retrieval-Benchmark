@@ -1,0 +1,9 @@
+torch
+numpy
+pandas
+biopython
+tqdm
+transformers
+faiss-cpu
+matplotlib
+umap-learn

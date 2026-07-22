@@ -2,7 +2,7 @@
 
 LLMTB is an early-stage tuberculosis genomics project for creating isolate-level embeddings from FASTA sequences. The long-term goal is to use these embeddings in a vector database so a new tuberculosis isolate can be compared against past isolates with similar genomes.
 
-Each isolate is paired with antibiotic susceptibility labels. Once the embeddings are indexed, a nearest-neighbor search could support exploratory resistance prediction: for example, if the five closest historical isolates are resistant to a drug, the new isolate may be more likely to behave similarly. This repository currently focuses on generating embeddings and metadata; vector database indexing and nearest-neighbor querying are planned future work.
+Each isolate is paired with antibiotic susceptibility labels. Once the embeddings are indexed, nearest-neighbor search can support exploratory resistance analysis: for example, if the five closest historical isolates are resistant to a drug, the new isolate may be more likely to behave similarly. This repository currently generates isolate embeddings, builds FAISS indexes, retrieves nearest neighbors, and evaluates whether nearby embeddings share antibiotic resistance phenotypes.
 
 ## Project Status
 
@@ -13,41 +13,80 @@ This project currently:
 - Embeds each gene unit, defined as `BEFORE region + gene + AFTER region`, using `InstaDeepAI/nucleotide-transformer-500m-human-ref`
 - Averages gene-unit embeddings into one fixed-length embedding per isolate
 - Saves embeddings as a NumPy array and isolate metadata as a CSV file
-
-The vector database workflow is not implemented yet.
+- Builds FAISS nearest-neighbor indexes over isolate embeddings
+- Compares each isolate's top 5 neighbors against antibiotic susceptibility labels
 
 ## Pipeline
 
 ```text
-FASTA isolate
+FASTA isolate files
       |
       v
-BEFORE + gene + AFTER
+Extract gene units
+(BEFORE region + gene region + AFTER region)
       |
       v
 Nucleotide Transformer
+InstaDeepAI/nucleotide-transformer-500m-human-ref
       |
       v
 Gene-unit embeddings
       |
       v
-Average
+Average all gene-unit embeddings for each isolate
       |
       v
-One isolate embedding
+One fixed-length isolate embedding
       |
       v
 isolate_embeddings.npy
       |
-      v
-Future vector database (FAISS)
+      +----------------------------+
+      |                            |
+      v                            v
+isolate_metadata.csv         readable_embeddings.csv
+(isolate ID + labels)        (metadata + embedding columns)
       |
       v
-Nearest-neighbor search
+Build FAISS indexes
+flat, hnsw, ivf_1024_32, ivf_2048_64, ivf_4096_64
       |
       v
-Resistance prediction support
+Search each isolate against the index
+      |
+      v
+Remove the isolate itself and keep the top 5 nearest neighbors
+      |
+      v
+Compare query antibiotic labels with neighbor antibiotic labels
+AMI, BDQ, CFZ, DLM, EMB, ETH, INH, KAN, LEV, LZD, MXF, RIF, RFB
+      |
+      v
+Calculate per-antibiotic top-5 match scores
+      |
+      v
+Compare index behavior by match score, runtime, size, and neighbor overlap
 ```
+
+The FAISS index does not use antibiotic labels to choose neighbors. It only uses embedding similarity. The antibiotic labels are used after nearest-neighbor search to evaluate whether nearby isolates share the same resistance or susceptibility phenotype.
+
+For each antibiotic, the match score is:
+
+```text
+number of valid query-neighbor pairs with the same antibiotic label
+/
+number of valid query-neighbor pairs for that antibiotic
+```
+
+With 6,150 isolates and `top_k = 5`, each antibiotic can have up to 30,750 query-neighbor comparisons. Missing labels are skipped, so the valid comparison count can be lower.
+
+The index-level match score used for comparison is the average of the per-antibiotic match scores:
+
+```text
+(AMI + BDQ + CFZ + DLM + EMB + ETH + INH + KAN + LEV + LZD + MXF + RIF + RFB) / 13
+```
+
+This index-level average is useful for comparing search methods, but the per-antibiotic scores are more biologically meaningful. Very high scores for rare-resistance drugs can happen because most isolates share the susceptible label, so those scores should be interpreted alongside resistance prevalence or a random same-label baseline.
 
 ## Repository Structure
 
@@ -56,17 +95,37 @@ Resistance prediction support
 +-- Data/
 |   +-- IR_Variable/              # Input FASTA files for isolates
 |   +-- cryptic_targets_all.json  # Antibiotic susceptibility labels by isolate
-+-- embed_isolates.py             # Main embedding pipeline
++-- Scripts/
+|   +-- model-1-nucleotide-transformer-500m-human-ref/
+|   |   +-- embed_isolates.py      # Nucleotide Transformer embedding pipeline
+|   +-- model-2-dnabert-1-6mer/
+|   |   +-- embed_isolates.py      # DNABERT-1 6-mer embedding pipeline
+|   +-- faiss_indexes/
+|   |   +-- flat_build_search.py   # Exact FAISS index build/search
+|   |   +-- hnsw_build_search.py   # HNSW FAISS index build/search
+|   |   +-- ivf_build_search.py    # IVF FAISS index build/search
+|   +-- analysis/
+|       +-- collect_results.py     # Summarize embedding and FAISS outputs
+|       +-- generate_figures.py    # Generate plots from summary files
 +-- test.py                       # Smoke test for model loading and one FASTA sequence
++-- requirements.txt
 +-- README.md
 ```
 
-Generated files are written by the script to:
+Generated files are written locally and are ignored by Git:
 
 ```text
-outputs/
-+-- isolate_embeddings.npy
-+-- isolate_metadata.csv
+Outputs/
++-- <model-name>/
+|   +-- isolate_embeddings.npy
+|   +-- isolate_metadata.csv
+|   +-- readable_embeddings.csv
+|   +-- faiss_indexes/
+Analysis/
++-- embedding_summary.csv
++-- faiss_summary.csv
+Figures/
++-- *.png
 ```
 
 ## Requirements
@@ -76,7 +135,7 @@ This project uses Python and the Hugging Face Transformers ecosystem.
 Install the required packages:
 
 ```bash
-pip install torch numpy pandas biopython tqdm transformers
+pip install -r requirements.txt
 ```
 
 For GPU acceleration, install the PyTorch build that matches your CUDA version from the official PyTorch installation instructions.
@@ -123,19 +182,40 @@ Run a quick smoke test:
 python test.py
 ```
 
-Generate isolate embeddings:
+Generate Nucleotide Transformer isolate embeddings:
 
 ```bash
-python embed_isolates.py
+python Scripts/model-1-nucleotide-transformer-500m-human-ref/embed_isolates.py
 ```
 
-The current script is configured to process only the first five FASTA files:
+Generate DNABERT-1 6-mer isolate embeddings:
+
+```bash
+python Scripts/model-2-dnabert-1-6mer/embed_isolates.py
+```
+
+Build FAISS indexes and run top-5 nearest-neighbor searches:
+
+```bash
+python Scripts/faiss_indexes/flat_build_search.py
+python Scripts/faiss_indexes/hnsw_build_search.py
+python Scripts/faiss_indexes/ivf_build_search.py
+```
+
+Collect summary metrics and generate figures:
+
+```bash
+python Scripts/analysis/collect_results.py
+python Scripts/analysis/generate_figures.py
+```
+
+Each embedding script uses `NUM_FASTA_FILES` to control how many FASTA files are processed:
 
 ```python
-fasta_files = fasta_files[:5]
+NUM_FASTA_FILES = None
 ```
 
-Remove or change that line in `embed_isolates.py` to process more isolates.
+Set this to an integer for a smaller test run, or leave it as `None` to process all isolates.
 
 ## Outputs
 
@@ -158,16 +238,14 @@ The CSV provides the mapping between each embedding and its corresponding isolat
 
 These two files are meant to stay aligned by row index. Row `i` in `isolate_embeddings.npy` corresponds to row `i` in `isolate_metadata.csv`.
 
-## Intended Future Workflow
+## Current Search Workflow
 
-The planned next step is to load `isolate_embeddings.npy` into a vector database, keep `isolate_metadata.csv` attached as metadata, and query the database with embeddings generated from new patient isolates.
-
-A future workflow may look like:
+The current FAISS workflow is:
 
 1. Generate an embedding for a new tuberculosis isolate.
-2. Search the vector database for the closest historical isolate embeddings.
+2. Search a FAISS index for the closest historical isolate embeddings.
 3. Retrieve antibiotic susceptibility labels for the nearest isolates.
-4. Use the labels from the nearest isolates as supporting evidence for resistance or susceptibility patterns.
+4. Compare nearest-neighbor labels as supporting evidence for resistance or susceptibility patterns.
 
 This should be treated as a research and decision-support workflow, not a standalone clinical diagnostic system.
 

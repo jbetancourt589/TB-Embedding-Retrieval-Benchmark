@@ -1,3 +1,10 @@
+
+#1.LOADS TRANSFORMER
+#2.READS 'N' FASTA FILES
+#3.COMBINES: BEFORE + GENE + AFTER
+#4.CREATES EMBEDDING ISOLATE
+
+
 import os
 import json
 import time
@@ -9,16 +16,27 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 MODEL_NAME = "InstaDeepAI/nucleotide-transformer-500m-human-ref"
+MODEL_DIR_NAME = "model-1-nucleotide-transformer-500m-human-ref"
 
-FASTA_DIR = r"Data/IR_Variable"
-TARGETS_JSON = r"Data/cryptic_targets_all.json"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 
-OUTPUT_DIR = "outputs"
+DATA_DIR = os.path.join(PROJECT_DIR, "Data")
+FASTA_DIR = os.path.join(DATA_DIR, "IR_Variable") #contains all TB isolate FASTA files
+TARGETS_JSON = os.path.join(DATA_DIR, "cryptic_targets_all.json") #contains the labels for every isolate
+
+OUTPUT_DIR = os.path.join(PROJECT_DIR, "Outputs", MODEL_DIR_NAME)
+
+#contains the vectors that will be searched through later using FAISS
 EMBEDDINGS_OUT = os.path.join(OUTPUT_DIR, "isolate_embeddings.npy")
+
+#shows which isolate each vector corresponds to
 METADATA_OUT = os.path.join(OUTPUT_DIR, "isolate_metadata.csv")
+
 READABLE_EMBEDDINGS_OUT = os.path.join(OUTPUT_DIR, "readable_embeddings.csv")
 
 MAX_LENGTH = 1000
+NUM_FASTA_FILES = None  # Change this to 'None' to run all isolates.
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -60,7 +78,6 @@ def embed_sequence(sequence):
     )
 
     inputs = {key: value.to(device) for key, value in inputs.items()}
-
     outputs = model(**inputs, output_hidden_states=True)
 
     last_hidden_state = outputs.hidden_states[-1]
@@ -73,7 +90,6 @@ def embed_sequence(sequence):
 
 def embed_isolate(fasta_path):
     unit_embeddings = []
-
     records = list(SeqIO.parse(fasta_path, "fasta"))
 
     i = 0
@@ -114,9 +130,8 @@ fasta_files = [
     if f.endswith(".fasta")
 ]
 
-# Only works with the first 5 FASTA files for testing.
-# Remove or change this line when you are ready to run more.
-fasta_files = fasta_files[:5]
+if NUM_FASTA_FILES is not None:
+    fasta_files = fasta_files[:NUM_FASTA_FILES]
 
 print("FASTA files found:", len(fasta_files))
 
@@ -145,8 +160,7 @@ for filename in tqdm(fasta_files):
         skipped_count += 1
         continue
 
-    isolate_end_time = time.time()
-    isolate_runtime = isolate_end_time - isolate_start_time
+    isolate_runtime = time.time() - isolate_start_time
     isolate_times.append(isolate_runtime)
 
     all_embeddings.append(isolate_embedding)
@@ -161,8 +175,7 @@ for filename in tqdm(fasta_files):
     row.update(targets[isolate_id])
     metadata.append(row)
 
-total_end_time = time.time()
-total_runtime = total_end_time - total_start_time
+total_runtime = time.time() - total_start_time
 
 if len(all_embeddings) == 0:
     raise ValueError("No embeddings were created. Check FASTA files and target labels.")
@@ -172,10 +185,14 @@ metadata_df = pd.DataFrame(metadata)
 
 np.save(EMBEDDINGS_OUT, embeddings_array)
 metadata_df.to_csv(METADATA_OUT, index=False)
+
 embedding_columns = [f"dim_{i}" for i in range(embeddings_array.shape[1])]
 embeddings_df = pd.DataFrame(embeddings_array, columns=embedding_columns)
 
-readable_df = pd.concat([metadata_df[["isolate_id", "filename", "num_gene_units_embedded"]], embeddings_df], axis=1)
+readable_df = pd.concat(
+    [metadata_df[["isolate_id", "filename", "num_gene_units_embedded"]], embeddings_df],
+    axis=1
+)
 
 readable_df.to_csv(READABLE_EMBEDDINGS_OUT, index=False)
 
