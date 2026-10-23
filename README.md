@@ -1,20 +1,20 @@
 # TB Isolate Embedding and Retrieval Benchmark
 
-**Genomic Foundation Models | Machine Learning | FAISS Vector Search | Computational Genomics**
+**Computational Genomics | DNA Foundation Models | FAISS Vector Search | Antibiotic Resistance Analysis**
 
 ## Overview
 
-This project implements a Python-based genomic dense-retrieval framework for analyzing *Mycobacterium tuberculosis* (MTB) isolates using pretrained DNA language models and approximate nearest-neighbor search.
+This project develops a genomic dense-retrieval framework for analyzing *Mycobacterium tuberculosis* (MTB) isolates using pretrained DNA language models and FAISS similarity search.
 
-The framework transforms genomic sequences into numerical embeddings, indexes those embeddings using FAISS, and retrieves genetically similar isolates to evaluate relationships between genomic representations and antibiotic resistance phenotypes.
+The pipeline converts genomic FASTA sequences into numerical embeddings, retrieves genetically similar isolates, and evaluates how well genomic similarity corresponds to antibiotic resistance phenotypes.
 
-The project focuses on three research questions:
+The research investigates:
 
-1. How effectively can pretrained DNA foundation models represent genomic variation across MTB isolates?
-2. How do different FAISS indexing strategies compare in retrieval speed, memory requirements, and label agreement?
-3. How does the choice of genomic sequence representation influence antibiotic resistance-related retrieval performance?
+- How effectively DNA foundation models represent genomic variation across MTB isolates.
+- How FAISS indexing strategies compare in search efficiency, memory usage, and retrieval performance.
+- How different genomic representations and aggregation methods influence antibiotic resistance retrieval and classification.
 
-The system is intended for computational genomics research and benchmarking, not clinical diagnosis.
+The broader research has evaluated more than 6,000 MTB isolates. The public repository contains the benchmarking implementation, while additional experiments have been conducted separately on the University of Florida's HiPerGator HPC system.
 
 ## Technologies
 
@@ -22,62 +22,60 @@ The system is intended for computational genomics research and benchmarking, not
 
 **Machine Learning:** PyTorch, Hugging Face Transformers, Nucleotide Transformer 500M, DNABERT-1
 
-**Vector Search:** FAISS Flat, HNSW, IVF
+**Vector Retrieval:** FAISS Flat, HNSW, IVF
 
-**Data Processing:** NumPy, pandas, FASTA processing
+**Data Analysis:** NumPy, pandas, Matplotlib, UMAP
 
-**Analysis:** Matplotlib, UMAP, classification and retrieval metrics
+**Genomics:** FASTA processing, DNA sequence embeddings, antibiotic resistance phenotype analysis
 
-**Research Computing:** Linux, CUDA, Conda, SLURM, UF HiPerGator
+**Research Computing:** CUDA, Linux, Conda, SLURM, UF HiPerGator
 
-Some additional experiments are conducted in an HPC environment and are not fully represented by the public repository.
-
-## Pipeline
+## Research Pipeline
 
 ```text
-MTB Isolate FASTA Files
-         |
-         v
-Genomic Sequence Processing
-         |
-         v
-DNA Foundation Models
-(Nucleotide Transformer / DNABERT)
-         |
-         v
-Gene-Level Embeddings
-         |
-         v
-Isolate-Level Embedding Aggregation
-         |
-         v
-FAISS Vector Indexing
-(Flat / HNSW / IVF)
-         |
-         v
-Top-5 Nearest-Neighbor Retrieval
-         |
-         v
-Antibiotic Resistance Label Comparison
-         |
-         v
-Performance Evaluation and Visualization
+MTB Genomic FASTA Sequences
+             |
+             v
+    Sequence Preprocessing
+             |
+             v
+     DNA Foundation Models
+  (NT 500M / DNABERT-1)
+             |
+             v
+     Gene-Level Embeddings
+             |
+             v
+   Isolate-Level Aggregation
+             |
+             v
+      FAISS Vector Index
+   (Flat / HNSW / IVF)
+             |
+             v
+   Top-K Nearest Neighbors
+             |
+             v
+ Antibiotic Phenotype Comparison
+             |
+             v
+ Retrieval & Classification Metrics
 ```
 
-Antibiotic susceptibility labels are **not used to determine nearest neighbors**. Retrieval is based on genomic embedding similarity. Labels are compared afterward to evaluate phenotype agreement.
+Nearest neighbors are selected using genomic embedding similarity. Antibiotic susceptibility labels are used afterward for evaluation rather than for computing similarity.
 
 ## Research Components
 
 ### 1. Genomic Embedding Generation
 
-The framework generates isolate-level representations using two pretrained DNA language models:
+The public pipeline uses two pretrained DNA language models:
 
 - `InstaDeepAI/nucleotide-transformer-500m-human-ref`
 - `zhihan1996/DNA_bert_6`
 
 Both models are used as feature extractors without additional fine-tuning.
 
-The provided FASTA files contain gene-centered sequence regions organized into groups of three:
+The embedding scripts process gene-centered genomic regions organized as:
 
 ```text
 BEFORE region
@@ -85,51 +83,86 @@ GENE region
 AFTER region
 ```
 
-For each valid gene unit, the pipeline combines these regions and generates a sequence embedding.
+These sequences provide coding and neighboring genomic context that may be relevant to antibiotic resistance.
 
-The BEFORE and AFTER regions preserve neighboring genomic context, which may contain regulatory variation relevant to antibiotic resistance.
+The public implementation combines valid gene-region sequences, generates embeddings, and averages gene-level representations to produce a fixed-length embedding for each isolate.
 
-Gene-unit representations are then aggregated through mean pooling to produce a fixed-length embedding for each isolate.
+### 2. FAISS Nearest-Neighbor Retrieval
 
-### 2. FAISS Similarity Search
+The pipeline benchmarks multiple FAISS indexes:
 
-The project benchmarks multiple FAISS index types:
-
-| Index | Description |
+| Index | Search Method |
 |---|---|
 | Flat | Exact nearest-neighbor search |
-| HNSW | Graph-based approximate nearest-neighbor search |
-| IVF 1024/32 | Inverted-file search with 1,024 clusters and 32 search probes |
-| IVF 2048/64 | Inverted-file search with 2,048 clusters and 64 search probes |
-| IVF 4096/64 | Inverted-file search with 4,096 clusters and 64 search probes |
+| HNSW | Graph-based approximate search |
+| IVF 1024/32 | 1,024 clusters, 32 search probes |
+| IVF 2048/64 | 2,048 clusters, 64 search probes |
+| IVF 4096/64 | 4,096 clusters, 64 search probes |
 
-Each index operates on the generated isolate embeddings.
+The benchmark measures index construction time, query latency, index storage size, and antibiotic label agreement among retrieved neighbors.
 
-The comparison evaluates tradeoffs between search speed, index construction time, storage requirements, and retrieval behavior.
+### 3. Genomic Representation Experiments
 
-### 3. Antibiotic Resistance Evaluation
+Additional research conducted on HiPerGator evaluates how the organization and aggregation of gene-level information affect retrieval performance.
 
-For each query isolate, FAISS retrieves the five nearest neighbors based on embedding similarity.
+Representation strategies include:
 
-The pipeline then compares antibiotic susceptibility labels to determine how frequently retrieved neighbors share the query isolate's phenotype.
+1. **Original chunked and averaged embeddings:** Aggregate embeddings across genomic sequence regions.
+2. **Complete-case concatenation:** Concatenate gene representations for isolates with the required complete gene information.
+3. **Padded/placeholder concatenation:** Preserve a consistent representation structure when some gene information is unavailable.
+4. **Gene pooling:** Aggregate gene-level representations into an isolate-level embedding.
 
-The principal retrieval metric is **Match@5**, which summarizes agreement between the query's antibiotic label and the labels of its five retrieved neighbors.
+Related experiments also investigate ordered genes, intergenic regions, and resistance-associated gene subsets.
 
-Because antibiotic resistance labels may be imbalanced, high agreement does not necessarily imply strong detection of resistant isolates. Additional classification metrics are useful for evaluating resistant-class performance.
+These experiments help assess whether preserving gene-level structure improves genomic retrieval and antibiotic resistance classification.
 
-### 4. Benchmarking and Visualization
+**Note:** These additional representation experiments are part of the broader research workflow and are not necessarily implemented in the public repository.
 
-The framework collects:
+## Experimental Results
 
-- Embedding generation runtime
-- Average embedding runtime per isolate
-- FAISS index build time
-- Nearest-neighbor query latency
-- Index storage size
-- Top-5 antibiotic label agreement
-- UMAP visualizations of embedding representations
+Two complementary evaluations compare genomic representation strategies across nine antibiotics.
 
-Outputs support comparisons between embedding models and FAISS indexing approaches.
+### Figure 1 — Retrieval Performance (Match@5)
+
+Match@5 measures the proportion of the five retrieved neighbors whose antibiotic phenotype agrees with the query isolate's phenotype, as reported in the experiment.
+
+![Flat Match@5 by Antibiotic and Representation](Figures/flat_match_at_5.png)
+
+**Key observations:**
+
+- AMI achieved the highest displayed Match@5, reaching **96.4%** with complete-case concatenation.
+- RIF Match@5 ranged from 77.3% to 90.7%, depending on the representation.
+- EMB demonstrated substantial differences between representations, ranging from 63.6% to 82.9%.
+- Representation choice affected retrieval agreement differently across antibiotics.
+
+**Evaluation note:** Complete-case concatenation uses a reduced native cohort in this figure. Its results should not be interpreted as directly controlled improvements over methods evaluated on different isolate populations.
+
+### Figure 2 — Resistant-Class F1 Score
+
+While Match@5 measures nearest-neighbor label agreement, resistant-class F1 evaluates the balance between precision and recall when predicting resistant isolates.
+
+This experiment uses Top-5 majority-vote classification on a matched complete-case cohort.
+
+![Resistant F1 by Antibiotic and Representation](Figures/resistant_f1.png)
+
+**Key observations:**
+
+- RIF achieved a resistant-class F1 of **89.2%** using placeholder or complete-case concatenation.
+- For INH, both concatenation methods achieved 89.0% resistant-class F1.
+- For EMB, concatenation improved resistant-class F1 from 71.9% for the original representation to 77.0%.
+- No single representation consistently produced the best results across every antibiotic.
+
+**Evaluation note:** These results come from a matched complete-case cohort and should be distinguished from the cohort-specific Match@5 comparisons.
+
+### Interpretation
+
+The experiments illustrate the importance of evaluating genomic retrieval beyond overall nearest-neighbor agreement.
+
+Match@5 describes phenotype agreement among retrieved neighbors, while resistant-class F1 provides a more targeted assessment of predictions for resistant isolates.
+
+The findings suggest that genomic representation and aggregation choices can meaningfully affect retrieval and classification behavior, with differences depending on the antibiotic.
+
+These results are research benchmarks, not validated clinical predictions.
 
 ## Repository Structure
 
@@ -151,12 +184,15 @@ Outputs support comparisons between embedding models and FAISS indexing approach
 │   │   ├── collect_results.py
 │   │   └── generate_figures.py
 │   └── run_full_pipeline.py
+├── Figures/
+│   ├── flat_match_at_5.png
+│   └── resistant_f1.png
 ├── test.py
 ├── requirements.txt
 └── README.md
 ```
 
-Real genomic datasets, generated embeddings, indexes, and most benchmarking outputs are maintained locally rather than committed to GitHub.
+The `Data/` paths describe required local inputs. Genomic datasets, generated embeddings, and large benchmark outputs are excluded from public version control.
 
 ## Installation
 
@@ -167,75 +203,70 @@ git clone https://github.com/jbetancourt589/TB-Embedding-Retrieval-Benchmark.git
 cd TB-Embedding-Retrieval-Benchmark
 ```
 
-Install Python dependencies:
+Install the dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-For GPU acceleration, install a PyTorch version compatible with your CUDA environment.
+For GPU acceleration, install the appropriate CUDA-compatible PyTorch version.
 
-## Data Requirements
+## Input Data
 
-The embedding scripts expect:
+The scripts expect:
 
 ```text
 Data/IR_Variable/
 Data/cryptic_targets_all.json
 ```
 
-### FASTA inputs
+The input requirements include:
 
-- Files must end in `.fasta`.
-- Isolate identifiers are extracted from filenames by removing `_IR_Genes.fasta`.
-- Gene-centered sequence records follow the BEFORE/GENE/AFTER organization.
+- Isolate FASTA files ending in `.fasta`.
+- Isolate identifiers extracted by removing `_IR_Genes.fasta` from filenames.
+- Gene-centered BEFORE/GENE/AFTER sequence groups.
+- Antibiotic susceptibility labels indexed by matching isolate identifiers.
 
-### Antibiotic susceptibility labels
+See `Data/README.md` for local data setup information.
 
-`cryptic_targets_all.json` contains susceptibility annotations associated with isolate identifiers.
-
-Identifiers must match those extracted from the FASTA filenames.
-
-Refer to `Data/README.md` for the expected input structure.
-
-**The underlying genomic datasets are not included in the public repository.**
+**The underlying MTB datasets are not included in this public repository.**
 
 ## Running the Pipeline
 
-### Full benchmark
+### Full Benchmark
 
 ```bash
 python Scripts/run_full_pipeline.py
 ```
 
-### Smaller test
+### Smaller Test Run
 
 ```bash
 python Scripts/run_full_pipeline.py --max-fasta-files 10
 ```
 
-### Reuse existing embeddings
+### Reuse Existing Embeddings
 
 ```bash
 python Scripts/run_full_pipeline.py --skip-embeddings
 ```
 
-### Model-loading smoke test
+### Model-Loading Smoke Test
 
 ```bash
 python test.py
 ```
 
-Individual stages can also be executed independently.
+### Run Individual Pipeline Stages
 
-**Generate embeddings:**
+Generate isolate embeddings:
 
 ```bash
 python Scripts/model-1-nucleotide-transformer-500m-human-ref/embed_isolates.py
 python Scripts/model-2-dnabert-1-6mer/embed_isolates.py
 ```
 
-**Build and search FAISS indexes:**
+Build and search FAISS indexes:
 
 ```bash
 python Scripts/faiss_indexes/flat_build_search.py
@@ -243,16 +274,16 @@ python Scripts/faiss_indexes/hnsw_build_search.py
 python Scripts/faiss_indexes/ivf_build_search.py
 ```
 
-**Generate benchmark summaries and visualizations:**
+Collect results and generate figures:
 
 ```bash
 python Scripts/analysis/collect_results.py
 python Scripts/analysis/generate_figures.py
 ```
 
-When running embedding scripts individually, use the `TB_MAX_FASTA_FILES` environment variable to limit processing.
+For smaller individual embedding runs, set the `TB_MAX_FASTA_FILES` environment variable.
 
-Example in PowerShell:
+PowerShell example:
 
 ```powershell
 $env:TB_MAX_FASTA_FILES = "10"
@@ -261,7 +292,7 @@ python Scripts/model-1-nucleotide-transformer-500m-human-ref/embed_isolates.py
 
 ## Generated Outputs
 
-### Embeddings
+The pipeline generates embedding arrays, isolate metadata, FAISS indexes, and benchmark summaries.
 
 ```text
 Outputs/<model-name>/
@@ -271,17 +302,17 @@ Outputs/<model-name>/
 └── faiss_indexes/
 ```
 
-`isolate_embeddings.npy` is a two-dimensional NumPy array with shape:
+`isolate_embeddings.npy` contains an array with shape:
 
 ```text
 (number_of_isolates, embedding_dimension)
 ```
 
-`isolate_metadata.csv` records isolate identifiers, filenames, embedded gene-unit counts, and antibiotic susceptibility annotations.
+Each embedding row corresponds to the same row in `isolate_metadata.csv`.
 
-The embedding and metadata files are aligned by row index.
+Metadata includes isolate identifiers, source filenames, embedded gene-unit counts, and available antibiotic susceptibility labels.
 
-### Analysis
+Benchmark summaries are generated under:
 
 ```text
 Analysis/
@@ -289,52 +320,24 @@ Analysis/
 └── faiss_summary.csv
 ```
 
-### Visualizations
-
-```text
-Figures/
-├── embedding_total_runtime.png
-├── embedding_average_runtime.png
-├── faiss_build_time.png
-├── faiss_search_time.png
-├── faiss_index_size.png
-├── faiss_match_rate.png
-└── umap_comparison_RIF.png
-```
-
-These outputs are generated locally and excluded from Git unless separately approved for public release.
-
-## Research Extensions
-
-Beyond the public benchmarking pipeline, related experiments investigate how different genomic representations affect retrieval quality.
-
-These include:
-
-- Ordered gene representations
-- Combined gene and intergenic-region representations
-- Resistance-associated gene subsets
-- Resistance-associated genes with intergenic context
-- Alternative gene-level aggregation strategies
-
-These experiments explore whether biologically informed representation choices improve the usefulness of DNA foundation-model embeddings for antibiotic resistance research.
-
-Not all extensions are implemented in the public repository.
+Additional runtime, search, storage, and visualization outputs may be generated locally.
 
 ## Limitations
 
-- Embedding similarity does not necessarily imply identical antibiotic resistance phenotypes.
-- Resistance-label imbalance may inflate overall neighbor agreement.
-- Approximate FAISS indexes can trade retrieval exactness for performance.
-- Model and index comparisons depend on the chosen genomic representation and benchmarking configuration.
-- The full research datasets and HPC workflows are not publicly included.
+- Genomic embedding similarity does not guarantee identical antibiotic resistance.
+- Class imbalance can affect label agreement and classification performance.
+- Some representations are evaluated using different isolate cohorts.
+- Approximate nearest-neighbor indexes may trade exactness for retrieval efficiency.
+- The public pipeline does not include every newer research experiment.
+- Full experiments require external genomic data and substantial computational resources.
 
 ## Research Context
 
-This work explores the use of pretrained DNA foundation models and dense vector retrieval for comparative genomic analysis of tuberculosis isolates.
+This project investigates how pretrained DNA language models and vector retrieval methods can support comparative genomic analysis of tuberculosis isolates.
 
-It demonstrates practical applications of machine learning, genomic sequence analysis, vector search, and high-performance computing.
+It combines machine learning, bioinformatics, large-scale data processing, and high-performance computing to study antibiotic resistance-related genomic patterns.
 
-**Intended use:** Research and computational benchmarking only. The pipeline is not validated for clinical diagnosis or treatment decisions.
+**This framework is intended for research and computational benchmarking only and is not validated for clinical diagnosis or treatment selection.**
 
 ## Author
 
@@ -348,4 +351,4 @@ Research interests: Computational Genomics, Bioinformatics, Machine Learning, an
 
 ## License
 
-No license has been selected. Reuse and redistribution permissions are not established by this repository.
+No license has been selected. Reuse and redistribution permissions have not been granted through a repository license.
